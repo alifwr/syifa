@@ -1,5 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
+const swaggerJsDoc = require('swagger-jsdoc');
+const swaggerUi = require('swagger-ui-express');
 const app = express();
 const port = 3001;
 
@@ -8,19 +10,51 @@ const SLOW_API_URL = 'http://localhost:3000/slow';
 
 app.use(express.json());
 
+// Swagger definition
+const swaggerOptions = {
+    swaggerDefinition: {
+        openapi: '3.0.0',
+        info: {
+            title: 'Polling API (Bridge)',
+            version: '1.0.0',
+            description: 'Gateway that manages long-running tasks by polling the Slow API.',
+        },
+        servers: [
+            {
+                url: `http://localhost:${port}`,
+            },
+        ],
+    },
+    apis: ['index.js'], // Files containing annotations
+};
+
+const swaggerDocs = swaggerJsDoc(swaggerOptions);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+
 // In-memory store for tracking jobs and their results
-// In a production app, this would be Redis or a database.
 const jobs = {};
 
 /**
- * 1. Initiation: Client sends a POST request to start a task.
- * Returns 202 Accepted with a unique job_id.
+ * @swagger
+ * /jobs:
+ *   post:
+ *     summary: Initiate a new background task
+ *     responses:
+ *       202:
+ *         description: Job accepted and started in background
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 job_id:
+ *                   type: string
+ *                 status:
+ *                   type: string
  */
 app.post('/jobs', (req, res) => {
-    // Generate a unique job ID
     const jobId = crypto.randomUUID();
     
-    // Push the task to our in-memory store with status: "pending"
     jobs[jobId] = { 
         id: jobId, 
         status: 'pending', 
@@ -30,18 +64,31 @@ app.post('/jobs', (req, res) => {
     
     console.log(`[Bridge] Job ${jobId} initiated. Returning 202.`);
 
-    // Acknowledgment: return 202 immediately.
     res.status(202).json({
         job_id: jobId,
         status: 'pending'
     });
 
-    // Start background processing without blocking the response.
     processSlowTask(jobId);
 });
 
 /**
- * 2. Polling: Client sends a GET request to /status/{job_id} at regular intervals.
+ * @swagger
+ * /status/{job_id}:
+ *   get:
+ *     summary: Get the status and result of a job
+ *     parameters:
+ *       - in: path
+ *         name: job_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The unique ID of the job
+ *     responses:
+ *       200:
+ *         description: Current job status and data
+ *       404:
+ *         description: Job not found
  */
 app.get('/status/:job_id', (req, res) => {
     const { job_id } = req.params;
@@ -51,25 +98,14 @@ app.get('/status/:job_id', (req, res) => {
         return res.status(404).json({ error: 'Job not found' });
     }
 
-    // Check current status and return it.
-    // If the job is still running, it will be 'processing'.
-    // If finished, it will be 'completed' with the result data.
     res.json(job);
 });
 
-/**
- * Background Task Worker:
- * This function simulates what a background worker would do.
- * It calls the slow External API and updates the job status upon completion.
- */
 async function processSlowTask(jobId) {
     try {
-        // Update job status to processing
         jobs[jobId].status = 'processing';
         console.log(`[Bridge] Job ${jobId} is now processing. Calling slow-api (500s delay)...`);
 
-        // Use built-in fetch to call the slow external API
-        // Node 18+ has fetch natively.
         const response = await fetch(SLOW_API_URL);
 
         if (!response.ok) {
@@ -78,14 +114,12 @@ async function processSlowTask(jobId) {
 
         const data = await response.json();
 
-        // 3. Completion: Once the External API responds, update the status to "completed" and store the data.
         jobs[jobId].status = 'completed';
         jobs[jobId].result = data;
         jobs[jobId].completed_at = new Date().toISOString();
         
         console.log(`[Bridge] Job ${jobId} successfully completed!`);
     } catch (error) {
-        // Handle failures (e.g. timeout, network issue)
         console.error(`[Bridge] Job ${jobId} failed: ${error.message}`);
         jobs[jobId].status = 'failed';
         jobs[jobId].error = error.message;
@@ -94,7 +128,17 @@ async function processSlowTask(jobId) {
 }
 
 app.listen(port, () => {
-    console.log(`Bridge API (Polling Gateway) listening at http://localhost:${port}`);
+    console.log(`\n🚀 Polling API is UP and running!`);
+    console.log(`- Base URL: http://localhost:${port}/`);
+    console.log(`- Swagger UI: http://localhost:${port}/api-docs`);
     console.log(`- Initiation point: POST http://localhost:${port}/jobs`);
-    console.log(`- Polling point: GET http://localhost:${port}/status/:job_id`);
+    console.log(`- Polling point: GET http://localhost:${port}/status/:job_id\n`);
+}).on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`\n❌ ERROR: Port ${port} is already in use.`);
+        console.error(`Please close the existing process running on this port or use a different port.\n`);
+    } else {
+        console.error(`\n❌ Unexpected server error:`, err);
+    }
+    process.exit(1);
 });
