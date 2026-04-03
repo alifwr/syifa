@@ -54,22 +54,22 @@ const jobs = {};
  */
 app.post('/jobs', (req, res) => {
     const jobId = crypto.randomUUID();
-    
-    jobs[jobId] = { 
-        id: jobId, 
-        status: 'pending', 
+
+    jobs[jobId] = {
+        id: jobId,
+        status: 'pending',
         result: null,
         created_at: new Date().toISOString()
     };
-    
+
     console.log(`[Bridge] Job ${jobId} initiated. Returning 202.`);
+
+    processSlowTask(jobId);
 
     res.status(202).json({
         job_id: jobId,
         status: 'pending'
     });
-
-    processSlowTask(jobId);
 });
 
 /**
@@ -117,7 +117,7 @@ async function processSlowTask(jobId) {
         jobs[jobId].status = 'completed';
         jobs[jobId].result = data;
         jobs[jobId].completed_at = new Date().toISOString();
-        
+
         console.log(`[Bridge] Job ${jobId} successfully completed!`);
     } catch (error) {
         console.error(`[Bridge] Job ${jobId} failed: ${error.message}`);
