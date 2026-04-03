@@ -104,9 +104,29 @@ npm start
    ```bash
    curl -X POST http://localhost:3002/jobs \
      -H "Content-Type: application/json" \
-     -d '{"callback_url": "https://your-site.com/webhooks/receive"}'
+     -d '{"callback_url": "http://localhost:3003/webhook-test"}'
    ```
 2. **Receive**: Your server at `callback_url` will receive a POST request when the data is ready.
+
+---
+
+## 🔍 How to Demonstrate the Webhook Callback
+
+If you're testing locally, you need a way to receive the callback. You have two options:
+
+### Option 1: Use the included Listener Script
+I've included a simple listener script for demonstration:
+1. Open a new terminal.
+2. Run: `node listener.js` (inside `syifa-api-webhook`).
+3. It will listen at `http://localhost:3003/webhook-test`.
+4. Use this URL when initiating a job.
+
+### Option 2: Use Webhook.site (Public URL)
+If you want to see the callback on a web interface:
+1. Go to [Webhook.site](https://webhook.site/).
+2. Copy "Your unique URL".
+3. Use that URL when initiating the job.
+4. Watch the request arrive live on the website!
 
 ---
 
