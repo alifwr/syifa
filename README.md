@@ -1,35 +1,51 @@
-# Syifa API Polling System
+# Syifa API Bridge System
 
-A demonstration of the **Asynchronous Polling Pattern** used to handle long-running HTTP requests. This project consists of two microservices that work together to prevent client timeouts and handle heavy processing tasks gracefully.
+A demonstration of asynchronous patterns used to handle long-running HTTP requests. This project consists of three microservices that work together to prevent client timeouts and handle heavy processing tasks gracefully using two common patterns: **Polling** and **Webhooks**.
+
+---
 
 ## 🏗️ Architecture Overview
 
-The system architecture follows this flow:
-1. **Client** initiates a task via the **Polling API**.
-2. **Polling API** acknowledges the request immediately with a `job_id`.
-3. **Polling API** starts the heavy task by calling the **Slow API** in the background.
-4. **Client** polls the status of the job at regular intervals.
-5. Once the **Slow API** finished, the **Polling API** updates the job status to `completed`.
+The system supports two asynchronous communication patterns:
+
+### 1. Polling Pattern (`syifa-api-polling`)
+1. **Client** initiates a task.
+2. **Bridge API** acknowledges immediately with a `job_id`.
+3. **Bridge API** calls the **Slow API** in the background.
+4. **Client** polls the status endpoint until the result is available.
+
+### 2. Webhook Pattern (`syifa-api-webhook`)
+1. **Client** initiates a task and provides a `callback_url`.
+2. **Bridge API** acknowledges immediately with a `job_id`.
+3. **Bridge API** calls the **Slow API** in the background.
+4. Once completed, the **Bridge API** sends a POST request back to the client's `callback_url` with the result.
 
 ---
 
 ## 🚀 Services
 
 ### 1. Slow API (`/slow-api`)
-Simulates a heavy-processing service with a 500-second delay.
+Simulates a heavy-processing service with a configurable delay (default 500 seconds).
 - **Port:** `3000`
 - **Endpoints:**
   - `GET /`: Health check.
   - `GET /slow`: Triggers the slow response.
-  - `GET /api-docs`: **Swagger Interactive UI** 🚀
+  - `GET /api-docs`: Swagger Interactive UI.
 
 ### 2. Polling API (`/syifa-api-polling`)
-The gateway that manages background jobs and polling.
+Bridge service using the **Polling** pattern.
 - **Port:** `3001`
 - **Endpoints:**
   - `POST /jobs`: Initiates a new background task.
   - `GET /status/:job_id`: Checks the current status and returns result.
-  - `GET /api-docs`: **Swagger Interactive UI** 🚀
+  - `GET /api-docs`: Swagger Interactive UI.
+
+### 3. Webhook API (`/syifa-api-webhook`)
+Bridge service using the **Webhook** pattern.
+- **Port:** `3002`
+- **Endpoints:**
+  - `POST /jobs`: Initiates a task with a `callback_url`.
+  - `GET /api-docs`: Swagger Interactive UI.
 
 ---
 
@@ -39,7 +55,7 @@ The gateway that manages background jobs and polling.
 - Node.js (v18+ recommended)
 
 ### Installation
-Install dependencies for both services:
+Install dependencies for all services:
 ```bash
 # Install Slow API
 cd slow-api
@@ -48,70 +64,49 @@ npm install
 # Install Polling API
 cd ../syifa-api-polling
 npm install
+
+# Install Webhook API
+cd ../syifa-api-webhook
+npm install
 ```
 
 ### Running the Services
-Open two terminal windows:
+Open separate terminal windows for each service:
 
 **Terminal 1 (Slow API):**
 ```bash
 cd slow-api
-node index.js
+npm start
 ```
 
 **Terminal 2 (Polling API):**
 ```bash
 cd syifa-api-polling
-node index.js
+npm start
+```
+
+**Terminal 3 (Webhook API):**
+```bash
+cd syifa-api-webhook
+npm start
 ```
 
 ---
 
-## 📝 Usage Example
+## 📝 Usage Examples
 
-### 1. Initiate a Job
-Send a POST request to the Polling API:
-```bash
-curl -X POST http://localhost:3001/jobs
-```
-**Response:**
-```json
-{
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "pending"
-}
-```
+### Case A: Polling Method
+1. **Initiate**: `curl -X POST http://localhost:3001/jobs`
+2. **Poll**: `curl http://localhost:3001/status/<job_id>`
 
-### 2. Poll for Status
-Use the `job_id` from the previous step:
-```bash
-curl http://localhost:3001/status/550e8400-e29b-41d4-a716-446655440000
-```
-
-**Response (Processing):**
-```json
-{
-  "id": "...",
-  "status": "processing",
-  "result": null,
-  "created_at": "..."
-}
-```
-
-**Response (Completed):**
-Once the 500s delay is up, the result will appear:
-```json
-{
-  "id": "...",
-  "status": "completed",
-  "result": {
-    "message": "Success!",
-    "data": "This data was returned very slowly as requested.",
-    "delay": "500 seconds"
-  },
-  "completed_at": "..."
-}
-```
+### Case B: Webhook Method
+1. **Initiate**:
+   ```bash
+   curl -X POST http://localhost:3002/jobs \
+     -H "Content-Type: application/json" \
+     -d '{"callback_url": "https://your-site.com/webhooks/receive"}'
+   ```
+2. **Receive**: Your server at `callback_url` will receive a POST request when the data is ready.
 
 ---
 
